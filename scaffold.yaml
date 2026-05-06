@@ -1,0 +1,46 @@
+project_title: a-curl-gcloud-plugin
+version: "0.1.1"
+description: "A dynamically scaffolded c/cmake project"
+stack: c/cmake
+date_created: 2026-05-06
+
+profile: default
+
+# ── 1. Scaffolding Engine Source ──
+base_templates:
+  repo: https://github.com/contactandyc/scaffold-templates.git
+  ref: main
+
+# ── Dynamic Setup Variables ──
+c_standard: "23"
+cxx_standard: "17"
+
+# ── 3. Licenses & Legal ──
+# license_profile: apache-2.0
+# license_overrides:
+#   "src/vendor/**": mit
+
+# ── 4. Dependencies ──
+depends_on: []
+
+# ── 5. Sources (Auto-Discovered) ──
+# library_sources:
+#   - src/main.c
+
+# ── 6. Tests (Auto-Discovered) ──
+# tests:
+#   targets:
+#     - name: test_custom
+#       sources:
+#         - tests/src/test_custom.c
+
+# ── 7. Apps & Examples (Optional) ──
+# apps:
+#   01_basic_example:
+#     binaries:
+#       basic_app:
+#         - src/main.c
+
+# ── Feature Flags & Overrides ──
+# features:
+#   changie: true
