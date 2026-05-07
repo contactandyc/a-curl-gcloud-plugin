@@ -14,7 +14,7 @@
 
 /* Internal output object (duplicated in openai file for simplicity) */
 typedef struct {
-    curl_output_interface_t interface;
+    curl_sink_interface_t interface;
     aml_pool_t *pool;
     aml_buffer_t *response_buffer;
     gcloud_embedding_complete_callback_t complete_callback;
@@ -24,7 +24,7 @@ typedef struct {
 
 /* write → buffer the whole response body */
 static size_t embedding_write_callback(const void *data, size_t size, size_t nmemb,
-                                       curl_output_interface_t *interface) {
+                                       curl_sink_interface_t *interface) {
     embedding_output_t *output = (embedding_output_t *)interface;
     size_t total = size * nmemb;
     aml_buffer_append(output->response_buffer, data, total);
@@ -33,7 +33,7 @@ static size_t embedding_write_callback(const void *data, size_t size, size_t nme
 
 /* failure → bubble up as false */
 static void embedding_on_failure(CURLcode result, long http_code,
-                                 curl_output_interface_t *userdata,
+                                 curl_sink_interface_t *userdata,
                                  curl_event_request_t *req) {
     embedding_output_t *output = (embedding_output_t *)userdata;
     fprintf(stderr, "[google_embed_output] failure HTTP %ld, CURL %d\n", http_code, result);
@@ -41,7 +41,7 @@ static void embedding_on_failure(CURLcode result, long http_code,
 }
 
 /* init/destroy */
-static bool embedding_init(curl_output_interface_t *interface, long content_length) {
+static bool embedding_init(curl_sink_interface_t *interface, long content_length) {
     (void)content_length;
     embedding_output_t *output = (embedding_output_t *)interface;
     output->pool = aml_pool_init(4096);
@@ -49,7 +49,7 @@ static bool embedding_init(curl_output_interface_t *interface, long content_leng
     return true;
 }
 
-static void embedding_destroy(curl_output_interface_t *interface) {
+static void embedding_destroy(curl_sink_interface_t *interface) {
     embedding_output_t *output = (embedding_output_t *)interface;
     if (output->pool) aml_pool_destroy(output->pool);
     if (output->response_buffer) aml_buffer_destroy(output->response_buffer);
@@ -57,12 +57,9 @@ static void embedding_destroy(curl_output_interface_t *interface) {
 }
 
 /* Google (Vertex AI) specific parse */
-static void parse_google_embeddings(curl_output_interface_t *userdata,
+static void parse_google_embeddings(curl_sink_interface_t *userdata,
                                     curl_event_request_t *req) {
     embedding_output_t *output = (embedding_output_t *)userdata;
-
-    /* Optional: log raw for debugging */
-    // fprintf(stderr, "%s\n", aml_buffer_data(output->response_buffer));
 
     ajson_t *json = ajson_parse_string(output->pool, aml_buffer_data(output->response_buffer));
     aml_buffer_clear(output->response_buffer);
@@ -113,7 +110,7 @@ static void parse_google_embeddings(curl_output_interface_t *userdata,
 }
 
 /* Factory */
-curl_output_interface_t *google_embed_output(
+curl_sink_interface_t *google_embed_output(
     size_t expected_embedding_size,
     gcloud_embedding_complete_callback_t complete_callback,
     void *complete_callback_arg)
@@ -131,5 +128,5 @@ curl_output_interface_t *google_embed_output(
     output->interface.complete = parse_google_embeddings;
     output->interface.destroy = embedding_destroy;
 
-    return (curl_output_interface_t *)output;
+    return (curl_sink_interface_t *)output;
 }

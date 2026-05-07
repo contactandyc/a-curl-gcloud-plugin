@@ -29,7 +29,7 @@ bool curl_event_plugin_spanner_query_init(
     curl_event_res_id  token_id,
     curl_event_res_id  session_id,
     const char *sql_statement,
-    curl_output_interface_t *output_interface
+    curl_sink_interface_t *output_interface
 );
 
 #ifdef __cplusplus

@@ -5,6 +5,7 @@
 
 #include "a-curl-library/curl_event_loop.h"
 #include "a-curl-gcloud-plugin/sinks/pubsub.h"
+#include "a-curl-gcloud-plugin/plugins/pubsub_pull.h"
 #include "a-json-library/ajson.h"
 #include "a-memory-library/aml_alloc.h"
 #include "a-memory-library/aml_buffer.h"
@@ -13,7 +14,7 @@
 #include <stdio.h>
 
 typedef struct {
-    curl_output_interface_t interface;
+    curl_sink_interface_t interface;
     aml_pool_t *pool;
     aml_buffer_t *message_buffer;
     aml_buffer_t *ack_buffer;
@@ -29,7 +30,7 @@ typedef struct {
 } pubsub_output_t;
 
 // Write callback: Append data to message buffer
-static size_t pubsub_write_callback(const void *data, size_t size, size_t nmemb, curl_output_interface_t *interface) {
+static size_t pubsub_write_callback(const void *data, size_t size, size_t nmemb, curl_sink_interface_t *interface) {
     pubsub_output_t *output = (pubsub_output_t *)interface;
     size_t total = size * nmemb;
     aml_buffer_append(output->message_buffer, data, total);
@@ -112,7 +113,7 @@ static void acknowledge_messages(pubsub_output_t *output) {
     aml_buffer_clear(output->ack_buffer); // Clear buffer after acknowledgment
 }
 
-static void pubsub_on_failure(CURLcode result, long http_code, curl_output_interface_t *userdata,
+static void pubsub_on_failure(CURLcode result, long http_code, curl_sink_interface_t *userdata,
                               curl_event_request_t *req) {
     pubsub_output_t *output = (pubsub_output_t *)userdata;
     if(output->complete_callback)
@@ -120,10 +121,9 @@ static void pubsub_on_failure(CURLcode result, long http_code, curl_output_inter
 }
 
 // Completion callback: Parse messages and handle acknowledgment.
-static void pubsub_on_complete(curl_output_interface_t *userdata, curl_event_request_t *req) {
+static void pubsub_on_complete(curl_sink_interface_t *userdata, curl_event_request_t *req) {
     pubsub_output_t *output = (pubsub_output_t *)userdata;
 
-    // fprintf( stderr, "pubsub_on_complete\n%s\n", aml_buffer_data(output->message_buffer) );
     ajson_t *json = ajson_parse_string(output->pool, aml_buffer_data(output->message_buffer));
     aml_buffer_clear(output->message_buffer); // Clear message buffer for reuse
 
@@ -176,7 +176,7 @@ static void pubsub_on_complete(curl_output_interface_t *userdata, curl_event_req
 }
 
 // Update `pubsub_init` to accept new parameters and initialize the additional fields.
-static bool pubsub_init(curl_output_interface_t *interface, long content_length) {
+static bool pubsub_init(curl_sink_interface_t *interface, long content_length) {
     (void)content_length; // Unused
     pubsub_output_t *output = (pubsub_output_t *)interface;
 
@@ -188,7 +188,7 @@ static bool pubsub_init(curl_output_interface_t *interface, long content_length)
 }
 
 // Destroy the Pub/Sub output object
-static void pubsub_destroy(curl_output_interface_t *interface) {
+static void pubsub_destroy(curl_sink_interface_t *interface) {
     pubsub_output_t *output = (pubsub_output_t *)interface;
     if(output->pool)
         aml_pool_destroy(output->pool); // Automatically frees all pool-allocated memory
@@ -204,7 +204,7 @@ static void pubsub_destroy(curl_output_interface_t *interface) {
 
 
 // Updated `pubsub_output` to accept loop-related arguments.
-curl_output_interface_t *pubsub_output(
+curl_sink_interface_t *pubsub_output(
     curl_event_loop_t *loop,
     const char *project_id,
     const char *subscription_id,
@@ -232,5 +232,5 @@ curl_output_interface_t *pubsub_output(
     output->interface.complete = pubsub_on_complete;
     output->interface.destroy = pubsub_destroy;
 
-    return (curl_output_interface_t *)output;
+    return (curl_sink_interface_t *)output;
 }

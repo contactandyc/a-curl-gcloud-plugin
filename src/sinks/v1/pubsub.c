@@ -56,7 +56,7 @@ static void publish_complete(curl_sink_interface_t *iface, curl_event_request_t 
   size_t i=0;
   if (ids && ajson_is_array(ids)) {
     for (ajsona_t *el = ajsona_first(ids); el; el = ajsona_next(el)) {
-      out[i++] = ajson_to_new_cstring(pool, el->value);
+      out[i++] = aml_pool_strdup(pool, ajson_to_strd(pool, el->value, NULL));
     }
   }
   if (s->cb) s->cb(s->b.cb_arg, req, true, out, n);
@@ -151,8 +151,8 @@ static void pull_complete(curl_sink_interface_t *iface, curl_event_request_t *re
       m->attr_vals = aml_pool_alloc(pool, ac * sizeof(char *));
       m->num_attributes = 0;
       for (ajsono_t *kv = ajsono_first(attrs); kv; kv = ajsono_next(kv)) {
-        m->attr_keys[m->num_attributes] = ajson_to_new_cstring(pool, kv->key);
-        m->attr_vals[m->num_attributes] = ajson_to_new_cstring(pool, kv->value);
+        m->attr_keys[m->num_attributes] = aml_pool_strdup(pool, kv->key);
+        m->attr_vals[m->num_attributes] = aml_pool_strdup(pool, ajson_to_strd(pool, kv->value, NULL));
         m->num_attributes++;
       }
     }

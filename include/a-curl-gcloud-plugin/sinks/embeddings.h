@@ -17,7 +17,7 @@ typedef void (*gcloud_embedding_complete_callback_t)(
     float **embeddings, size_t num_embeddings, size_t embedding_size
 );
 
-curl_output_interface_t *google_embed_output(
+curl_sink_interface_t *google_embed_output(
     size_t expected_embedding_size,
     gcloud_embedding_complete_callback_t complete_callback,
     void *complete_callback_arg);

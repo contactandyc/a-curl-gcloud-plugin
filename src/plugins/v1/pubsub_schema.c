@@ -10,7 +10,6 @@
 #include <stdio.h>
 #include <string.h>
 
-/* ---- shared request scaffold (same pattern as pubsub.c) ---- */
 typedef struct {
   curl_event_res_id token_id;
   const char *base_endpoint;
@@ -50,7 +49,7 @@ _start(curl_event_loop_t *loop, curl_event_res_id token_id,
 }
 static void _apply_paging(curl_event_request_t *req) {
   schema_pd_t *pd = (schema_pd_t *)req->plugin_data;
-  const char *old = curl_event_request_get_url(req);
+  const char *old = req->url;
   const char *q = strchr(old, '?') ? "&" : "?";
   size_t need = 64 + (pd->page_token ? strlen(pd->page_token) : 0);
   char *url = aml_pool_alloc(req->pool, strlen(old) + need);
@@ -60,14 +59,13 @@ static void _apply_paging(curl_event_request_t *req) {
   curl_event_request_url(req, url);
 }
 
-/* ---- helpers ---- */
 static const char *_type_str(gcloud_v1_pubsub_schema_type_t t) {
   return (t == GCLOUD_V1_PUBSUB_SCHEMA_TYPE_AVRO) ? "AVRO" : "PROTOCOL_BUFFER";
 }
 static const char *_enc_str(gcloud_v1_pubsub_message_encoding_t e) {
   return (e == GCLOUD_V1_PUBSUB_MESSAGE_ENCODING_JSON) ? "JSON" : "BINARY";
 }
-/* simple b64 (reuse from pubsub.c if you prefer) */
+
 static const char B64[65] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 static char *b64enc(aml_pool_t *pool, const void *data, size_t len) {
   const unsigned char *in = data; size_t out_len = ((len+2)/3)*4;
@@ -79,12 +77,11 @@ static char *b64enc(aml_pool_t *pool, const void *data, size_t len) {
   } *p=0; return out;
 }
 
-/* ---- create ---- */
 curl_event_request_t *
 gcloud_v1_pubsub_schemas_create_init(curl_event_loop_t *loop, curl_event_res_id tok,
                                      const char *base, const char *project, const char *schema_id)
 {
-  aml_pool_t *tmp = aml_pool_init();
+  aml_pool_t *tmp = aml_pool_init(1024);
   const char *sid = gcloud_v1_pubsub_url_encode_segment(tmp, schema_id);
   char path[1024];
   snprintf(path, sizeof path, "/v1/projects/%s/schemas?schemaId=%s", project, sid);
@@ -99,18 +96,17 @@ void gcloud_v1_pubsub_schemas_set_definition(curl_event_request_t *req, const ch
   ajsono_append(((schema_pd_t*)req->plugin_data)->root, "definition", ajson_encode_str(req->pool, def), false);
 }
 
-/* ---- get/delete/list ---- */
 curl_event_request_t *
 gcloud_v1_pubsub_schemas_get_init(curl_event_loop_t *loop, curl_event_res_id tok,
                                   const char *base, const char *project, const char *schema_id) {
-  aml_pool_t *tmp=aml_pool_init(); const char *sid=gcloud_v1_pubsub_url_encode_segment(tmp, schema_id);
+  aml_pool_t *tmp=aml_pool_init(1024); const char *sid=gcloud_v1_pubsub_url_encode_segment(tmp, schema_id);
   char path[1024]; snprintf(path,sizeof path,"/v1/projects/%s/schemas/%s", project, sid);
   curl_event_request_t *req=_start(loop,tok,base,"GET",path,false); aml_pool_destroy(tmp); return req;
 }
 curl_event_request_t *
 gcloud_v1_pubsub_schemas_delete_init(curl_event_loop_t *loop, curl_event_res_id tok,
                                      const char *base, const char *project, const char *schema_id) {
-  aml_pool_t *tmp=aml_pool_init(); const char *sid=gcloud_v1_pubsub_url_encode_segment(tmp, schema_id);
+  aml_pool_t *tmp=aml_pool_init(1024); const char *sid=gcloud_v1_pubsub_url_encode_segment(tmp, schema_id);
   char path[1024]; snprintf(path,sizeof path,"/v1/projects/%s/schemas/%s", project, sid);
   curl_event_request_t *req=_start(loop,tok,base,"DELETE",path,false); aml_pool_destroy(tmp); return req;
 }
@@ -127,7 +123,6 @@ void gcloud_v1_pubsub_schemas_list_set_page_token(curl_event_request_t *req, con
   ((schema_pd_t*)req->plugin_data)->page_token = aml_pool_strdup(req->pool, tok?tok:""); _apply_paging(req);
 }
 
-/* ---- commit (nested schema) ---- */
 static ajson_t *_ensure_nested_schema(curl_event_request_t *req) {
   schema_pd_t *pd = (schema_pd_t*)req->plugin_data;
   ajson_t *s = ajsono_scan(pd->root, "schema");
@@ -137,7 +132,7 @@ static ajson_t *_ensure_nested_schema(curl_event_request_t *req) {
 curl_event_request_t *
 gcloud_v1_pubsub_schemas_commit_init(curl_event_loop_t *loop, curl_event_res_id tok,
                                      const char *base, const char *project, const char *schema_id) {
-  aml_pool_t *tmp=aml_pool_init(); const char *sid=gcloud_v1_pubsub_url_encode_segment(tmp, schema_id);
+  aml_pool_t *tmp=aml_pool_init(1024); const char *sid=gcloud_v1_pubsub_url_encode_segment(tmp, schema_id);
   char path[1024]; snprintf(path,sizeof path,"/v1/projects/%s/schemas/%s:commit", project, sid);
   curl_event_request_t *req=_start(loop,tok,base,"POST",path,true); aml_pool_destroy(tmp); return req;
 }
@@ -148,11 +143,10 @@ void gcloud_v1_pubsub_schemas_commit_set_definition(curl_event_request_t *req, c
   ajsono_append(_ensure_nested_schema(req),"definition", ajson_encode_str(req->pool,def), false);
 }
 
-/* ---- rollback/deleteRevision/listRevisions ---- */
 curl_event_request_t *
 gcloud_v1_pubsub_schemas_rollback_init(curl_event_loop_t *loop, curl_event_res_id tok,
                                        const char *base, const char *project, const char *schema_id) {
-  aml_pool_t *tmp=aml_pool_init(); const char *sid=gcloud_v1_pubsub_url_encode_segment(tmp, schema_id);
+  aml_pool_t *tmp=aml_pool_init(1024); const char *sid=gcloud_v1_pubsub_url_encode_segment(tmp, schema_id);
   char path[1024]; snprintf(path,sizeof path,"/v1/projects/%s/schemas/%s:rollback", project, sid);
   curl_event_request_t *req=_start(loop,tok,base,"POST",path,true); aml_pool_destroy(tmp); return req;
 }
@@ -162,16 +156,15 @@ void gcloud_v1_pubsub_schemas_rollback_set_revision_id(curl_event_request_t *req
 curl_event_request_t *
 gcloud_v1_pubsub_schemas_delete_revision_init(curl_event_loop_t *loop, curl_event_res_id tok,
                                               const char *base, const char *project, const char *schema_id) {
-  /* revisionId is added later as query param */
-  aml_pool_t *tmp=aml_pool_init(); const char *sid=gcloud_v1_pubsub_url_encode_segment(tmp, schema_id);
+  aml_pool_t *tmp=aml_pool_init(1024); const char *sid=gcloud_v1_pubsub_url_encode_segment(tmp, schema_id);
   char path[1024]; snprintf(path,sizeof path,"/v1/projects/%s/schemas/%s:deleteRevision", project, sid);
   curl_event_request_t *req=_start(loop,tok,base,"DELETE",path,false);
   aml_pool_destroy(tmp); return req;
 }
 void gcloud_v1_pubsub_schemas_delete_revision_set_revision_id(curl_event_request_t *req, const char *rev) {
   schema_pd_t *pd=(schema_pd_t*)req->plugin_data;
-  aml_pool_t *tmp=aml_pool_init(); const char *q=gcloud_v1_pubsub_url_encode_segment(tmp, rev);
-  const char *old=curl_event_request_get_url(req);
+  aml_pool_t *tmp=aml_pool_init(1024); const char *q=gcloud_v1_pubsub_url_encode_segment(tmp, rev);
+  const char *old=req->url;
   char *url=aml_pool_alloc(req->pool, strlen(old)+20+strlen(q));
   sprintf(url,"%s?revisionId=%s",old,q);
   curl_event_request_url(req,url);
@@ -181,7 +174,7 @@ void gcloud_v1_pubsub_schemas_delete_revision_set_revision_id(curl_event_request
 curl_event_request_t *
 gcloud_v1_pubsub_schemas_list_revisions_init(curl_event_loop_t *loop, curl_event_res_id tok,
                                              const char *base, const char *project, const char *schema_id) {
-  aml_pool_t *tmp=aml_pool_init(); const char *sid=gcloud_v1_pubsub_url_encode_segment(tmp, schema_id);
+  aml_pool_t *tmp=aml_pool_init(1024); const char *sid=gcloud_v1_pubsub_url_encode_segment(tmp, schema_id);
   char path[1024]; snprintf(path,sizeof path,"/v1/projects/%s/schemas/%s:listRevisions", project, sid);
   curl_event_request_t *req=_start(loop,tok,base,"GET",path,false); aml_pool_destroy(tmp); return req;
 }
@@ -192,7 +185,6 @@ void gcloud_v1_pubsub_schemas_list_revisions_set_page_token(curl_event_request_t
   ((schema_pd_t*)req->plugin_data)->page_token = aml_pool_strdup(req->pool, tok?tok:""); _apply_paging(req);
 }
 
-/* ---- validate & validateMessage ---- */
 curl_event_request_t *
 gcloud_v1_pubsub_schemas_validate_init(curl_event_loop_t *loop, curl_event_res_id tok,
                                        const char *base, const char *project) {

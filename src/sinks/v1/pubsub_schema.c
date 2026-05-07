@@ -85,22 +85,3 @@ gcloud_v1_pubsub_schemas_list_sink(curl_event_request_t *req,
   curl_event_request_sink(req,(curl_sink_interface_t*)s,NULL);
   return (curl_sink_interface_t*)s;
 }
-
-/* ---- empty sink (delete, deleteRevision, validate, validateMessage) ---- */
-typedef struct { base_t b; gcloud_v1_pubsub_empty_cb cb; } sink_empty_t;
-static void empty_fail(CURLcode rc,long http,curl_sink_interface_t *i,curl_event_request_t *r){
-  sink_empty_t*s=(void*)i; if(s->cb) s->cb(s->b.arg,r,false);
-}
-static void empty_done(curl_sink_interface_t *i,curl_event_request_t *r){
-  sink_empty_t*s=(void*)i; if(s->cb) s->cb(s->b.arg,r,true);
-}
-curl_sink_interface_t *
-gcloud_v1_pubsub_empty_sink(curl_event_request_t *req,
-                            gcloud_v1_pubsub_empty_cb cb, void *arg) {
-  sink_empty_t *s=aml_pool_zalloc(req->pool,sizeof *s);
-  s->cb=cb; s->b.arg=arg; s->b.iface.pool=req->pool;
-  s->b.iface.init=s_init; s->b.iface.write=s_write; s->b.iface.destroy=s_destroy;
-  s->b.iface.failure=empty_fail; s->b.iface.complete=empty_done;
-  curl_event_request_sink(req,(curl_sink_interface_t*)s,NULL);
-  return (curl_sink_interface_t*)s;
-}

@@ -1,0 +1,353 @@
+# SPDX-FileCopyrightText: 2026 Andy Curtis <contactandyc@gmail.com>
+# SPDX-License-Identifier: Apache-2.0
+#
+# Maintainer: Andy Curtis <contactandyc@gmail.com>
+
+# CMakeLists.txt for libraries (regular or header-only)
+cmake_minimum_required(VERSION 3.20)
+
+project(a_curl_gcloud_plugin
+  VERSION 0.1.1
+  LANGUAGES C
+)
+
+if(CMAKE_PREFIX_PATH)
+  include_directories("${CMAKE_PREFIX_PATH}/include")
+  link_directories("${CMAKE_PREFIX_PATH}/lib")
+endif()
+# ── Variant selection for the umbrella alias ──────────────────────────────────
+set(A_BUILD_VARIANT "debug" CACHE STRING
+    "Umbrella choice for in-tree linking (debug|memory|static|shared)")
+set_property(CACHE A_BUILD_VARIANT PROPERTY STRINGS debug memory static shared)
+
+option(A_ENABLE_COVERAGE "Enable code coverage instrumentation for this build" OFF)
+if(A_ENABLE_COVERAGE)
+  if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+    add_compile_options(-O0 -g -fprofile-instr-generate -fcoverage-mapping)
+    add_link_options(-fprofile-instr-generate -fcoverage-mapping)
+  elseif(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    add_compile_options(-O0 -g --coverage)
+    add_link_options(--coverage)
+  endif()
+endif()
+
+option(A_BUILD_ENABLE_MEMORY_PROFILE "Define a macro on the 'memory' variant" ON)
+set(A_BUILD_MEMORY_DEFINE "_AML_DEBUG_" CACHE STRING
+    "Macro to define on the 'memory' variant when memory profiling is enabled")
+
+if(MSVC)
+  set(_A_DEBUG_OPTS /Zi /Od)
+  set(_A_RELEASE_OPTS /O2 /DNDEBUG)
+else()
+  set(_A_DEBUG_OPTS -O0 -g)
+  set(_A_RELEASE_OPTS -O3 -DNDEBUG)
+endif()
+
+include(GNUInstallDirs)
+
+# ---- Dependencies (Standard CMake) ----
+find_package(a_memory_library CONFIG REQUIRED)
+find_package(the_io_library CONFIG REQUIRED)
+find_package(a_curl_library CONFIG REQUIRED)
+
+# ---- Dependencies (PkgConfig Shims) ----
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(PC_LIBJWT REQUIRED IMPORTED_TARGET libjwt)
+if(NOT TARGET libjwt)
+  add_library(libjwt ALIAS PkgConfig::PC_LIBJWT)
+endif()
+
+# ── Main Targets (Compiled Libraries) ─────────────────────────────────────────
+
+add_library(a_curl_gcloud_plugin_debug STATIC
+  src/plugins/cloud_spanner_query.c
+  src/plugins/cloud_spanner_session.c
+  src/plugins/cloudsql_query.c
+  src/plugins/embeddings.c
+  src/plugins/gcs_download.c
+  src/plugins/google_custom_search.c
+  src/plugins/google_vision.c
+  src/plugins/pubsub_pull.c
+  src/plugins/token.c
+  src/plugins/v1/embeddings.c
+  src/plugins/v1/gmail.c
+  src/plugins/v1/pubsub.c
+  src/plugins/v1/pubsub_schema.c
+  src/sinks/embeddings.c
+  src/sinks/pubsub.c
+  src/sinks/v1/embeddings.c
+  src/sinks/v1/gmail.c
+  src/sinks/v1/pubsub.c
+  src/sinks/v1/pubsub_schema.c
+)
+
+target_include_directories(a_curl_gcloud_plugin_debug PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+
+set_target_properties(a_curl_gcloud_plugin_debug PROPERTIES
+  C_STANDARD 23
+  C_STANDARD_REQUIRED YES
+  CXX_STANDARD 17
+  CXX_STANDARD_REQUIRED YES
+  POSITION_INDEPENDENT_CODE ON
+)
+
+target_link_libraries(a_curl_gcloud_plugin_debug PUBLIC
+  a_memory_library::a_memory_library
+  the_io_library::the_io_library
+  a_curl_library::a_curl_library
+  libjwt
+  lexbor
+)
+
+target_compile_options(a_curl_gcloud_plugin_debug PRIVATE ${_A_DEBUG_OPTS})
+
+
+install(TARGETS a_curl_gcloud_plugin_debug EXPORT a_curl_gcloud_pluginTargets
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+add_library(a_curl_gcloud_plugin_memory STATIC
+  src/plugins/cloud_spanner_query.c
+  src/plugins/cloud_spanner_session.c
+  src/plugins/cloudsql_query.c
+  src/plugins/embeddings.c
+  src/plugins/gcs_download.c
+  src/plugins/google_custom_search.c
+  src/plugins/google_vision.c
+  src/plugins/pubsub_pull.c
+  src/plugins/token.c
+  src/plugins/v1/embeddings.c
+  src/plugins/v1/gmail.c
+  src/plugins/v1/pubsub.c
+  src/plugins/v1/pubsub_schema.c
+  src/sinks/embeddings.c
+  src/sinks/pubsub.c
+  src/sinks/v1/embeddings.c
+  src/sinks/v1/gmail.c
+  src/sinks/v1/pubsub.c
+  src/sinks/v1/pubsub_schema.c
+)
+
+target_include_directories(a_curl_gcloud_plugin_memory PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+
+set_target_properties(a_curl_gcloud_plugin_memory PROPERTIES
+  C_STANDARD 23
+  C_STANDARD_REQUIRED YES
+  CXX_STANDARD 17
+  CXX_STANDARD_REQUIRED YES
+  POSITION_INDEPENDENT_CODE ON
+)
+
+target_link_libraries(a_curl_gcloud_plugin_memory PUBLIC
+  a_memory_library::a_memory_library
+  the_io_library::the_io_library
+  a_curl_library::a_curl_library
+  libjwt
+  lexbor
+)
+
+target_compile_options(a_curl_gcloud_plugin_memory PRIVATE ${_A_DEBUG_OPTS})
+
+if(A_BUILD_ENABLE_MEMORY_PROFILE)
+  target_compile_definitions(a_curl_gcloud_plugin_memory PUBLIC ${A_BUILD_MEMORY_DEFINE})
+endif()
+
+install(TARGETS a_curl_gcloud_plugin_memory EXPORT a_curl_gcloud_pluginTargets
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+add_library(a_curl_gcloud_plugin_static STATIC
+  src/plugins/cloud_spanner_query.c
+  src/plugins/cloud_spanner_session.c
+  src/plugins/cloudsql_query.c
+  src/plugins/embeddings.c
+  src/plugins/gcs_download.c
+  src/plugins/google_custom_search.c
+  src/plugins/google_vision.c
+  src/plugins/pubsub_pull.c
+  src/plugins/token.c
+  src/plugins/v1/embeddings.c
+  src/plugins/v1/gmail.c
+  src/plugins/v1/pubsub.c
+  src/plugins/v1/pubsub_schema.c
+  src/sinks/embeddings.c
+  src/sinks/pubsub.c
+  src/sinks/v1/embeddings.c
+  src/sinks/v1/gmail.c
+  src/sinks/v1/pubsub.c
+  src/sinks/v1/pubsub_schema.c
+)
+
+target_include_directories(a_curl_gcloud_plugin_static PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+
+set_target_properties(a_curl_gcloud_plugin_static PROPERTIES
+  C_STANDARD 23
+  C_STANDARD_REQUIRED YES
+  CXX_STANDARD 17
+  CXX_STANDARD_REQUIRED YES
+  POSITION_INDEPENDENT_CODE ON
+)
+
+target_link_libraries(a_curl_gcloud_plugin_static PUBLIC
+  a_memory_library::a_memory_library
+  the_io_library::the_io_library
+  a_curl_library::a_curl_library
+  libjwt
+  lexbor
+)
+
+target_compile_options(a_curl_gcloud_plugin_static PRIVATE ${_A_RELEASE_OPTS})
+
+
+install(TARGETS a_curl_gcloud_plugin_static EXPORT a_curl_gcloud_pluginTargets
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+add_library(a_curl_gcloud_plugin_shared SHARED
+  src/plugins/cloud_spanner_query.c
+  src/plugins/cloud_spanner_session.c
+  src/plugins/cloudsql_query.c
+  src/plugins/embeddings.c
+  src/plugins/gcs_download.c
+  src/plugins/google_custom_search.c
+  src/plugins/google_vision.c
+  src/plugins/pubsub_pull.c
+  src/plugins/token.c
+  src/plugins/v1/embeddings.c
+  src/plugins/v1/gmail.c
+  src/plugins/v1/pubsub.c
+  src/plugins/v1/pubsub_schema.c
+  src/sinks/embeddings.c
+  src/sinks/pubsub.c
+  src/sinks/v1/embeddings.c
+  src/sinks/v1/gmail.c
+  src/sinks/v1/pubsub.c
+  src/sinks/v1/pubsub_schema.c
+)
+
+target_include_directories(a_curl_gcloud_plugin_shared PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+
+set_target_properties(a_curl_gcloud_plugin_shared PROPERTIES
+  C_STANDARD 23
+  C_STANDARD_REQUIRED YES
+  CXX_STANDARD 17
+  CXX_STANDARD_REQUIRED YES
+  POSITION_INDEPENDENT_CODE ON
+)
+
+target_link_libraries(a_curl_gcloud_plugin_shared PUBLIC
+  a_memory_library::a_memory_library
+  the_io_library::the_io_library
+  a_curl_library::a_curl_library
+  libjwt
+  lexbor
+)
+
+target_compile_options(a_curl_gcloud_plugin_shared PRIVATE ${_A_RELEASE_OPTS})
+
+
+install(TARGETS a_curl_gcloud_plugin_shared EXPORT a_curl_gcloud_pluginTargets
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+string(REPLACE "-" "_" _variant_us "${A_BUILD_VARIANT}")
+set(_sel_tgt "a_curl_gcloud_plugin_${_variant_us}")
+if(TARGET "${_sel_tgt}")
+  add_library(a_curl_gcloud_plugin::a_curl_gcloud_plugin ALIAS ${_sel_tgt})
+endif()
+
+
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+
+install(EXPORT a_curl_gcloud_pluginTargets
+  FILE a_curl_gcloud_pluginTargets.cmake
+  NAMESPACE a_curl_gcloud_plugin::
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/a_curl_gcloud_plugin)
+
+# ---- Package config with umbrella target -------------------------------------
+set(_CFG_IN "${CMAKE_CURRENT_BINARY_DIR}/config.cmake.in")
+file(WRITE "${_CFG_IN}" [=[
+@PACKAGE_INIT@
+include(CMakeFindDependencyMacro)
+
+# Re-resolve PkgConfig dependencies for consumers
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(PC_LIBJWT REQUIRED IMPORTED_TARGET libjwt)
+if(NOT TARGET libjwt)
+  add_library(libjwt ALIAS PkgConfig::PC_LIBJWT)
+endif()
+
+if(NOT DEFINED A_BUILD_VARIANT OR A_BUILD_VARIANT STREQUAL "")
+  set(A_BUILD_VARIANT "debug")
+endif()
+string(REPLACE "-" "_" _picked_us "${A_BUILD_VARIANT}")
+
+set(_save_variant "${A_BUILD_VARIANT}")
+set(_deps "@A_BUILD_DEPS@")
+foreach(_dep IN LISTS _deps)
+  if(_dep)
+    find_dependency("${_dep}" REQUIRED)
+  endif()
+endforeach()
+set(A_BUILD_VARIANT "${_save_variant}")
+
+include("${CMAKE_CURRENT_LIST_DIR}/a_curl_gcloud_pluginTargets.cmake")
+
+set(_ns "@A_BUILD_EXPORT_NAMESPACE@")
+set(_pkg "@A_BUILD_TARGET_BASENAME@")
+
+# ONLY run target modifications if the imported target doesn't exist yet!
+if(NOT TARGET ${_ns}::${_pkg})
+  add_library(${_ns}::${_pkg} INTERFACE IMPORTED)
+
+  set(_pick ${_ns}::${_pkg}_${_picked_us})
+  if(TARGET "${_pick}")
+    target_link_libraries(${_ns}::${_pkg} INTERFACE "${_pick}")
+  endif()
+endif()
+]=])
+
+set(A_BUILD_TARGET_BASENAME "a_curl_gcloud_plugin")
+set(A_BUILD_EXPORT_NAMESPACE "a_curl_gcloud_plugin")
+set(A_BUILD_DEPS "a_memory_library;the_io_library;a_curl_library")
+
+include(CMakePackageConfigHelpers)
+configure_package_config_file(
+  "${_CFG_IN}"
+  "${CMAKE_CURRENT_BINARY_DIR}/a_curl_gcloud_pluginConfig.cmake"
+  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/a_curl_gcloud_plugin
+)
+write_basic_package_version_file(
+  "${CMAKE_CURRENT_BINARY_DIR}/a_curl_gcloud_pluginConfigVersion.cmake"
+  VERSION ${PROJECT_VERSION}
+  COMPATIBILITY SameMajorVersion
+)
+install(FILES
+  "${CMAKE_CURRENT_BINARY_DIR}/a_curl_gcloud_pluginConfig.cmake"
+  "${CMAKE_CURRENT_BINARY_DIR}/a_curl_gcloud_pluginConfigVersion.cmake"
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/a_curl_gcloud_plugin
+)
+# Extra project-specific targets
+
+
+
+# Dynamically mount all subprojects (apps, examples, tests, etc.)
+# 

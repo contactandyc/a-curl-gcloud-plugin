@@ -8,7 +8,7 @@
 
 #include "a-curl-library/curl_event_loop.h"
 #include "a-curl-library/curl_resource.h"
-#include "a-curl-library/curl_output.h"
+#include "a-curl-library/curl_event_request.h"
 #include <stdbool.h>
 
 #ifdef __cplusplus
@@ -37,7 +37,7 @@ curl_event_request_t *curl_event_plugin_google_custom_search_init(
     curl_event_res_id  api_key_id,
     const char *search_engine_id,
     const char *query,
-    curl_output_interface_t *output_interface
+    curl_sink_interface_t *output_interface
 );
 
 #ifdef __cplusplus

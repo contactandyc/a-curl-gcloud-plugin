@@ -7,6 +7,7 @@
 #define A_CURL_GCLOUD_PLUGIN_SINK_V1_PUBSUB_SCHEMA_H
 
 #include "a-curl-library/curl_event_request.h"
+#include "a-curl-gcloud-plugin/sinks/v1/pubsub.h" /* For gcloud_v1_pubsub_empty_sink */
 #include <stddef.h>
 #include <stdbool.h>
 
@@ -45,14 +46,6 @@ typedef void (*gcloud_v1_pubsub_schemas_list_cb)(
 curl_sink_interface_t *
 gcloud_v1_pubsub_schemas_list_sink(curl_event_request_t *req,
                                    gcloud_v1_pubsub_schemas_list_cb cb, void *cb_arg);
-
-/* Empty/boolean (delete, deleteRevision, validate, validateMessage) */
-typedef void (*gcloud_v1_pubsub_empty_cb)(
-  void *arg, curl_event_request_t *request, bool success
-);
-curl_sink_interface_t *
-gcloud_v1_pubsub_empty_sink(curl_event_request_t *req,
-                            gcloud_v1_pubsub_empty_cb cb, void *cb_arg);
 
 #ifdef __cplusplus
 }

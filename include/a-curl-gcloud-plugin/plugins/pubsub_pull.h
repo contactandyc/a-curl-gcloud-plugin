@@ -8,7 +8,7 @@
 
 #include "a-curl-library/curl_event_loop.h"
 #include "a-curl-library/curl_resource.h"   /* curl_event_res_id */
-#include "a-curl-library/curl_output.h"     /* curl_output_interface_t */
+#include "a-curl-library/curl_event_request.h"     /* curl_sink_interface_t */
 #include <stdbool.h>
 
 #ifdef __cplusplus
@@ -31,7 +31,7 @@ bool curl_event_plugin_pubsub_pull_init(
     const char *subscription_id,
     curl_event_res_id  token_id,
     int max_messages,
-    curl_output_interface_t *output_interface
+    curl_sink_interface_t *output_interface
 );
 
 /**

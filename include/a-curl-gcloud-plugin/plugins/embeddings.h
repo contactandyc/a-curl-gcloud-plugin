@@ -8,7 +8,7 @@
 
 #include "a-curl-library/curl_event_loop.h"
 #include "a-curl-library/curl_resource.h"
-#include "a-curl-library/curl_output.h"
+#include "a-curl-library/curl_event_request.h"
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -26,7 +26,7 @@ curl_event_request_t *curl_event_plugin_google_embed_init(
     curl_event_res_id  token_id,            /* gcloud_token resource id */
     char **input_text,                      /* array of NUL-terminated strings */
     size_t num_texts,
-    curl_output_interface_t *output_interface
+    curl_sink_interface_t *output_interface
 );
 
 #ifdef __cplusplus

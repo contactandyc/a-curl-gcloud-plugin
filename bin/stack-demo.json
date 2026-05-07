@@ -1,0 +1,239 @@
+{
+  "apiVersion": "stack.compose/v1",
+  "kind": "Plan",
+  "metadata": {
+    "name": "demo"
+  },
+  "vars": {
+    "projectId": "contactandyc",
+    "region": "us-central1",
+    "stack": "demo",
+    "subnetCidr": "10.10.0.0/20",
+    "podsCidr": "10.20.0.0/16",
+    "servicesCidr": "10.21.0.0/20",
+    "connSubnetCidr": "10.100.0.0/28",
+    "connSubnetName": "demo-svpc"
+  },
+  "steps": [
+    {
+      "id": "vpc_create",
+      "plugin": "gcp.vpc",
+      "request": {
+        "op": "createNetwork",
+        "params": {
+          "projectId": "contactandyc",
+          "name": "demo-vpc",
+          "autoCreateSubnetworks": false,
+          "routingMode": "REGIONAL",
+          "labels": {
+            "stack": "demo"
+          }
+        }
+      },
+      "dependsOn": []
+    },
+    {
+      "id": "subnet_create",
+      "plugin": "gcp.subnet",
+      "request": {
+        "op": "createSubnetwork",
+        "params": {
+          "projectId": "contactandyc",
+          "region": "us-central1",
+          "name": "demo-subnet",
+          "networkUri": "${steps.vpc_create.result.selfLink}",
+          "ipCidrRange": "10.10.0.0/20",
+          "privateIpGoogleAccess": true,
+          "secondaryIpRanges": [
+            {
+              "rangeName": "demo-pods",
+              "ipCidrRange": "10.20.0.0/16"
+            },
+            {
+              "rangeName": "demo-services",
+              "ipCidrRange": "10.21.0.0/20"
+            }
+          ],
+          "stackType": "IPV4_ONLY",
+          "labels": {
+            "stack": "demo"
+          }
+        }
+      },
+      "dependsOn": [
+        "vpc_create"
+      ]
+    },
+    {
+      "id": "subnet_svpc_create",
+      "plugin": "gcp.subnet",
+      "request": {
+        "op": "createSubnetwork",
+        "params": {
+          "projectId": "contactandyc",
+          "region": "us-central1",
+          "name": "demo-svpc",
+          "networkUri": "${steps.vpc_create.result.selfLink}",
+          "ipCidrRange": "10.100.0.0/28",
+          "privateIpGoogleAccess": true,
+          "labels": {
+            "stack": "demo",
+            "role": "svpc"
+          }
+        }
+      },
+      "dependsOn": [
+        "vpc_create"
+      ]
+    },
+    {
+      "id": "router_create",
+      "plugin": "gcp.cloudnat",
+      "request": {
+        "op": "createRouter",
+        "params": {
+          "projectId": "contactandyc",
+          "region": "us-central1",
+          "name": "demo-router",
+          "networkUri": "${steps.vpc_create.result.selfLink}",
+          "description": "demo router"
+        }
+      },
+      "dependsOn": [
+        "vpc_create"
+      ]
+    },
+    {
+      "id": "nat_create",
+      "plugin": "gcp.cloudnat",
+      "request": {
+        "op": "createNat",
+        "params": {
+          "projectId": "contactandyc",
+          "region": "us-central1",
+          "router": "demo-router",
+          "name": "demo-nat",
+          "sourceSubnetworkIpRangesToNat": "ALL_SUBNETWORKS_ALL_IP_RANGES",
+          "enableEndpointIndependentMapping": true,
+          "logConfig": {
+            "enable": false,
+            "filter": "ERRORS_ONLY"
+          }
+        }
+      },
+      "dependsOn": [
+        "router_create",
+        "subnet_create"
+      ]
+    },
+    {
+      "id": "gke_create",
+      "plugin": "gcp.gke",
+      "request": {
+        "op": "createClusterStandard",
+        "params": {
+          "projectId": "contactandyc",
+          "location": "us-central1",
+          "name": "demo-gke",
+          "networkUri": "${steps.vpc_create.result.selfLink}",
+          "subnetworkUri": "${steps.subnet_create.result.selfLink}",
+          "releaseChannel": "REGULAR",
+          "ipAllocationPolicy": {
+            "useIpAliases": true,
+            "clusterSecondaryRangeName": "demo-pods",
+            "servicesSecondaryRangeName": "demo-services",
+            "stackType": "IPV4_ONLY"
+          },
+          "privateCluster": {
+            "enablePrivateNodes": true,
+            "enablePrivateEndpoint": false,
+            "masterIpv4CidrBlock": "172.16.0.0/28",
+            "masterAuthorizedNetworks": []
+          },
+          "workloadIdentity": {
+            "workloadPool": "contactandyc.svc.id.goog"
+          },
+          "shieldedNodes": true,
+          "logging": {
+            "components": [
+              "SYSTEM_COMPONENTS",
+              "WORKLOADS"
+            ]
+          },
+          "monitoring": {
+            "managedPrometheus": true
+          },
+          "networkDataplane": "DATAPATH_PROVIDER_UNSPECIFIED",
+          "labels": {
+            "stack": "demo"
+          }
+        }
+      },
+      "dependsOn": [
+        "subnet_create",
+        "nat_create"
+      ]
+    },
+    {
+      "id": "vpcaccess_ensure",
+      "plugin": "gcp.vpcaccess",
+      "request": {
+        "op": "ensureConnector",
+        "params": {
+          "projectId": "contactandyc",
+          "region": "us-central1",
+          "name": "demo-conn",
+          "network": "demo-vpc",
+          "subnet": {
+            "name": "demo-svpc"
+          },
+          "minThroughput": 200,
+          "maxThroughput": 300
+        }
+      },
+      "dependsOn": [
+        "subnet_svpc_create"
+      ]
+    },
+    {
+      "id": "cloudrun_deploy",
+      "plugin": "gcp.cloudrun",
+      "request": {
+        "op": "deployService",
+        "params": {
+          "projectId": "contactandyc",
+          "region": "us-central1",
+          "name": "demo-api",
+          "image": "us-docker.pkg.dev/cloudrun/container/hello:latest",
+          "containerPort": 8080,
+          "concurrency": 80,
+          "scaling": {
+            "min": 0,
+            "max": 10
+          },
+          "ingress": "INGRESS_TRAFFIC_ALL",
+          "labels": {
+            "stack": "demo"
+          },
+          "vpcAccess": {
+            "connector": "${steps.vpcaccess_ensure.result.uri}",
+            "egress": "PRIVATE_RANGES_ONLY"
+          }
+        }
+      },
+      "dependsOn": [
+        "vpcaccess_ensure"
+      ]
+    }
+  ],
+  "outputs": {
+    "vpcUri": "${steps.vpc_create.result.selfLink}",
+    "subnetUri": "${steps.subnet_create.result.selfLink}",
+    "routerUri": "${steps.router_create.result.selfLink}",
+    "natName": "${steps.nat_create.result.name}",
+    "gkeCluster": "demo-gke",
+    "gkeEndpoint": "${steps.gke_create.result.endpoint}",
+    "vpcAccessConnectorUri": "${steps.vpcaccess_ensure.result.uri}",
+    "cloudRunUrl": "${steps.cloudrun_deploy.result.uri}"
+  }
+}

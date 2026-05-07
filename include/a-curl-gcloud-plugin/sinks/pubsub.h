@@ -57,7 +57,7 @@ typedef void (*pubsub_message_complete_callback_t)(
 // - callback_arg: User context passed to the message callback.
 // - complete_callback / complete_callback_arg: called after each pull completes.
 // - pre_ack: If true, messages are acknowledged before being passed to the message callback.
-curl_output_interface_t *pubsub_output(
+curl_sink_interface_t *pubsub_output(
     curl_event_loop_t *loop,
     const char *project_id,
     const char *subscription_id,

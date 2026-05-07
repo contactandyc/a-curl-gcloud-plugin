@@ -4,15 +4,13 @@
 // Maintainer: Andy Curtis <contactandyc@gmail.com>
 
 #include "a-curl-gcloud-plugin/plugins/v1/pubsub.h"
-#include "a-curl-gcloud-plugin/plugins/token.h"   /* gcloud_token_payload_t */
+#include "a-curl-gcloud-plugin/plugins/token.h"
 #include "a-json-library/ajson.h"
 #include "a-memory-library/aml_pool.h"
 #include "a-memory-library/aml_buffer.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
-
-/* ---------------- endpoint helpers ---------------- */
 
 void gcloud_v1_pubsub_build_locational_endpoint(char *buf, size_t buflen, const char *location) {
   snprintf(buf, buflen, "https://%s-pubsub.googleapis.com", location ? location : "us-central1");
@@ -21,14 +19,13 @@ void gcloud_v1_pubsub_build_regional_endpoint(char *buf, size_t buflen, const ch
   snprintf(buf, buflen, "https://pubsub.%s.rep.googleapis.com", region ? region : "us-central1");
 }
 
-/* URL-encode a path segment (conservative: [A-Za-z0-9-_.~] pass-through) */
 static inline int _is_unreserved(int c) {
   return (isalnum(c) || c=='-' || c=='_' || c=='.' || c=='~');
 }
+
 const char *gcloud_v1_pubsub_url_encode_segment(aml_pool_t *pool, const char *segment) {
-  if (!segment) return ajson_str_dup(pool, "");
+  if (!segment) return aml_pool_strdup(pool, "");
   size_t n = strlen(segment);
-  /* Worst case: every byte becomes %XX -> 3x + NUL */
   char *out = aml_pool_alloc(pool, n*3 + 1);
   char *p = out;
   for (size_t i = 0; i < n; ++i) {
@@ -44,11 +41,6 @@ const char *gcloud_v1_pubsub_url_encode_segment(aml_pool_t *pool, const char *se
   return out;
 }
 
-/* ---------------- base64 helpers ---------------- */
-
-static const signed char _b64_rev[256] = {
-  /* initialize on first use */
-};
 static void _b64_init(signed char *tbl) {
   memset(tbl, -1, 256);
   const char *ff = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -72,56 +64,24 @@ static char *_b64_enc(aml_pool_t *pool, const void *data, size_t len) {
   *p = 0;
   return out;
 }
-static unsigned char *_b64_dec(aml_pool_t *pool, const char *b64, size_t *out_len) {
-  static signed char tbl[256]; static int inited = 0;
-  if (!inited) { _b64_init(tbl); inited = 1; }
-
-  size_t n = strlen(b64);
-  if (n % 4 != 0) return NULL;
-  size_t out_cap = (n/4)*3;
-  unsigned char *out = aml_pool_alloc(pool, out_cap);
-  size_t j = 0;
-
-  for (size_t i=0; i<n; i+=4) {
-    int a = b64[i]   == '=' ? -2 : tbl[(unsigned char)b64[i]];
-    int b = b64[i+1] == '=' ? -2 : tbl[(unsigned char)b64[i+1]];
-    int c = b64[i+2] == '=' ? -2 : tbl[(unsigned char)b64[i+2]];
-    int d = b64[i+3] == '=' ? -2 : tbl[(unsigned char)b64[i+3]];
-    if (a < 0 || b < 0 || (c < -1) || (d < -1)) return NULL;
-
-    unsigned v = ((unsigned)a << 18) | ((unsigned)b << 12) | ((unsigned)((c<0)?0:c) << 6) | (unsigned)((d<0)?0:d);
-    out[j++] = (v >> 16) & 0xFF;
-    if (c >= 0) out[j++] = (v >> 8) & 0xFF;
-    if (d >= 0) out[j++] = v & 0xFF;
-  }
-  *out_len = j;
-  return out;
-}
-
-/* ---------------- per-request plugin data ---------------- */
 
 typedef struct {
   curl_event_res_id token_id;
-  const char *base_endpoint; /* pool-owned dup */
-  ajson_t    *root;          /* request JSON (for POST/PUT) */
-  /* For list query params: */
+  const char *base_endpoint;
+  ajson_t    *root;
   int page_size;
-  const char *page_token;    /* pool-owned dup */
+  const char *page_token;
 } pubsub_pd_t;
 
 #define PD(req) ((pubsub_pd_t *)(req)->plugin_data)
 
-/* Common on_prepare: add headers and commit JSON if present */
 static bool _on_prepare(curl_event_request_t *req) {
   if (!req || !req->plugin_data) return false;
   pubsub_pd_t *pd = PD(req);
 
   const gcloud_token_payload_t *tok =
       (const gcloud_token_payload_t *)curl_event_res_peek(req->loop, pd->token_id);
-  if (!tok || !tok->access_token) {
-    fprintf(stderr, "[gcloud.pubsub] missing/invalid token\n");
-    return false;
-  }
+  if (!tok || !tok->access_token) return false;
 
   char hdr[1024];
   snprintf(hdr, sizeof hdr, "Bearer %s", tok->access_token);
@@ -134,7 +94,6 @@ static bool _on_prepare(curl_event_request_t *req) {
   return true;
 }
 
-/* Utility: start a request with method + URL path (relative to base) */
 static curl_event_request_t *
 _start(curl_event_loop_t *loop, curl_event_res_id token_id,
        const char *base_endpoint, const char *method, const char *path,
@@ -156,10 +115,10 @@ _start(curl_event_loop_t *loop, curl_event_res_id token_id,
   pd->token_id = token_id;
   pd->base_endpoint = aml_pool_strdup(req->pool, base_endpoint);
   pd->page_size = 0; pd->page_token = NULL;
-  curl_event_request_plugin_data(req, pd, /*cleanup=*/NULL);
+  curl_event_request_plugin_data(req, pd, NULL);
 
   if (want_json_root) {
-    pd->root = curl_event_request_json_begin(req, /*array_root=*/false);
+    pd->root = curl_event_request_json_begin(req, false);
   }
 
   curl_event_request_depend(req, token_id);
@@ -170,12 +129,11 @@ _start(curl_event_loop_t *loop, curl_event_res_id token_id,
   return req;
 }
 
-/* Append pagination params to URL for list calls */
 static void _apply_paging(curl_event_request_t *req) {
   pubsub_pd_t *pd = PD(req);
   if ((pd->page_size <= 0) && (!pd->page_token || !*pd->page_token)) return;
 
-  const char *old = curl_event_request_get_url(req);
+  const char *old = req->url;
   size_t extra = 1 + 32 + (pd->page_token ? strlen(pd->page_token) + 11 : 0);
   char *url = aml_pool_alloc(req->pool, strlen(old) + extra + 1);
 
@@ -188,7 +146,6 @@ static void _apply_paging(curl_event_request_t *req) {
              "", 0);
   }
 
-  /* Construct afresh (clearer) */
   const char *q = strchr(old, '?') ? "&" : "?";
   size_t pos = snprintf(url, strlen(old) + 2, "%s", old);
   if (pd->page_size > 0) {
@@ -202,8 +159,6 @@ static void _apply_paging(curl_event_request_t *req) {
   curl_event_request_url(req, url);
 }
 
-/* ---------------- Topics ---------------- */
-
 curl_event_request_t *
 gcloud_v1_pubsub_topics_create_init(curl_event_loop_t *loop,
                                     curl_event_res_id  token_id,
@@ -212,16 +167,15 @@ gcloud_v1_pubsub_topics_create_init(curl_event_loop_t *loop,
                                     const char        *topic_id)
 {
   if (!project_id || !topic_id) return NULL;
-  aml_pool_t *tmp = aml_pool_init(); /* transient for encoding */
+  aml_pool_t *tmp = aml_pool_init(1024);
   const char *topic_seg = gcloud_v1_pubsub_url_encode_segment(tmp, topic_id);
 
   char path[1024];
   snprintf(path, sizeof path, "/v1/projects/%s/topics/%s", project_id, topic_seg);
 
   curl_event_request_t *req =
-      _start(loop, token_id, base_endpoint, "PUT", path, /*want_json_root=*/true);
+      _start(loop, token_id, base_endpoint, "PUT", path, true);
 
-  /* Body is the Topic resource; can be empty object '{}' */
   (void)PD(req)->root;
 
   aml_pool_destroy(tmp);
@@ -249,7 +203,7 @@ gcloud_v1_pubsub_topics_get_init(curl_event_loop_t *loop,
                                  const char        *project_id,
                                  const char        *topic_id)
 {
-  aml_pool_t *tmp = aml_pool_init();
+  aml_pool_t *tmp = aml_pool_init(1024);
   const char *topic_seg = gcloud_v1_pubsub_url_encode_segment(tmp, topic_id);
   char path[1024];
   snprintf(path, sizeof path, "/v1/projects/%s/topics/%s", project_id, topic_seg);
@@ -265,7 +219,7 @@ gcloud_v1_pubsub_topics_delete_init(curl_event_loop_t *loop,
                                     const char        *project_id,
                                     const char        *topic_id)
 {
-  aml_pool_t *tmp = aml_pool_init();
+  aml_pool_t *tmp = aml_pool_init(1024);
   const char *topic_seg = gcloud_v1_pubsub_url_encode_segment(tmp, topic_id);
   char path[1024];
   snprintf(path, sizeof path, "/v1/projects/%s/topics/%s", project_id, topic_seg);
@@ -301,13 +255,12 @@ gcloud_v1_pubsub_topics_publish_init(curl_event_loop_t *loop,
                                      const char        *project_id,
                                      const char        *topic_id)
 {
-  aml_pool_t *tmp = aml_pool_init();
+  aml_pool_t *tmp = aml_pool_init(1024);
   const char *topic_seg = gcloud_v1_pubsub_url_encode_segment(tmp, topic_id);
   char path[1024];
   snprintf(path, sizeof path, "/v1/projects/%s/topics/%s:publish", project_id, topic_seg);
   curl_event_request_t *req = _start(loop, token_id, base_endpoint, "POST", path, true);
 
-  /* Seed messages array */
   ajson_t *msgs = ajsona(req->pool);
   ajsono_append(PD(req)->root, "messages", msgs, false);
 
@@ -357,8 +310,6 @@ void gcloud_v1_pubsub_topics_publish_add_message_bytes(curl_event_request_t *req
   gcloud_v1_pubsub_topics_publish_add_message_b64(req, b64, attr_keys, attr_vals, n_attrs, ordering_key);
 }
 
-/* ---------------- Subscriptions ---------------- */
-
 curl_event_request_t *
 gcloud_v1_pubsub_subscriptions_create_init(curl_event_loop_t *loop,
                                            curl_event_res_id  token_id,
@@ -367,7 +318,7 @@ gcloud_v1_pubsub_subscriptions_create_init(curl_event_loop_t *loop,
                                            const char        *subscription_id,
                                            const char        *topic_full_name)
 {
-  aml_pool_t *tmp = aml_pool_init();
+  aml_pool_t *tmp = aml_pool_init(1024);
   const char *sub_seg = gcloud_v1_pubsub_url_encode_segment(tmp, subscription_id);
   char path[1024];
   snprintf(path, sizeof path, "/v1/projects/%s/subscriptions/%s", project_id, sub_seg);
@@ -404,7 +355,7 @@ gcloud_v1_pubsub_subscriptions_get_init(curl_event_loop_t *loop,
                                         const char        *project_id,
                                         const char        *subscription_id)
 {
-  aml_pool_t *tmp = aml_pool_init();
+  aml_pool_t *tmp = aml_pool_init(1024);
   const char *sub_seg = gcloud_v1_pubsub_url_encode_segment(tmp, subscription_id);
   char path[1024];
   snprintf(path, sizeof path, "/v1/projects/%s/subscriptions/%s", project_id, sub_seg);
@@ -420,7 +371,7 @@ gcloud_v1_pubsub_subscriptions_delete_init(curl_event_loop_t *loop,
                                            const char        *project_id,
                                            const char        *subscription_id)
 {
-  aml_pool_t *tmp = aml_pool_init();
+  aml_pool_t *tmp = aml_pool_init(1024);
   const char *sub_seg = gcloud_v1_pubsub_url_encode_segment(tmp, subscription_id);
   char path[1024];
   snprintf(path, sizeof path, "/v1/projects/%s/subscriptions/%s", project_id, sub_seg);
@@ -454,12 +405,11 @@ gcloud_v1_pubsub_subscriptions_pull_init(curl_event_loop_t *loop,
                                          const char        *project_id,
                                          const char        *subscription_id)
 {
-  aml_pool_t *tmp = aml_pool_init();
+  aml_pool_t *tmp = aml_pool_init(1024);
   const char *sub_seg = gcloud_v1_pubsub_url_encode_segment(tmp, subscription_id);
   char path[1024];
   snprintf(path, sizeof path, "/v1/projects/%s/subscriptions/%s:pull", project_id, sub_seg);
   curl_event_request_t *req = _start(loop, token_id, base_endpoint, "POST", path, true);
-  /* default body */
   ajsono_append(PD(req)->root, "maxMessages", ajson_number(req->pool, 1), false);
   aml_pool_destroy(tmp);
   return req;
@@ -480,7 +430,7 @@ gcloud_v1_pubsub_subscriptions_ack_init(curl_event_loop_t *loop,
                                         const char        *project_id,
                                         const char        *subscription_id)
 {
-  aml_pool_t *tmp = aml_pool_init();
+  aml_pool_t *tmp = aml_pool_init(1024);
   const char *sub_seg = gcloud_v1_pubsub_url_encode_segment(tmp, subscription_id);
   char path[1024];
   snprintf(path, sizeof path, "/v1/projects/%s/subscriptions/%s:acknowledge", project_id, sub_seg);
@@ -503,7 +453,7 @@ gcloud_v1_pubsub_subscriptions_modify_ack_deadline_init(curl_event_loop_t *loop,
                                                         const char        *project_id,
                                                         const char        *subscription_id)
 {
-  aml_pool_t *tmp = aml_pool_init();
+  aml_pool_t *tmp = aml_pool_init(1024);
   const char *sub_seg = gcloud_v1_pubsub_url_encode_segment(tmp, subscription_id);
   char path[1024];
   snprintf(path, sizeof path, "/v1/projects/%s/subscriptions/%s:modifyAckDeadline", project_id, sub_seg);

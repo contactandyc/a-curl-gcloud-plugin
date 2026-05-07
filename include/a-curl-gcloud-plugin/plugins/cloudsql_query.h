@@ -8,7 +8,7 @@
 
 #include "a-curl-library/curl_event_loop.h"
 #include "a-curl-library/curl_resource.h"
-#include "a-curl-library/curl_output.h"
+#include "a-curl-library/curl_event_request.h"
 
 #include <stdbool.h>
 
@@ -23,7 +23,7 @@ bool curl_event_plugin_cloudsql_query_init(
     const char *database,
     curl_event_res_id  token_id,                 /* <-- resource id from gcloud_token */
     const char *query,
-    curl_output_interface_t *output_interface
+    curl_sink_interface_t *output_interface
 );
 
 #ifdef __cplusplus

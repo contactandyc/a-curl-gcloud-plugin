@@ -21,7 +21,12 @@ cxx_standard: "17"
 #   "src/vendor/**": mit
 
 # ── 4. Dependencies ──
-depends_on: []
+depends_on:
+  - https://github.com/contactandyc/a-memory-library.git
+  - https://github.com/contactandyc/the-io-library.git
+  - https://github.com/contactandyc/a-curl-library.git
+  - common/libjwt
+  - common/lexbor
 
 # ── 5. Sources (Auto-Discovered) ──
 # library_sources:

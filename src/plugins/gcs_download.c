@@ -15,7 +15,6 @@
 
 static const char *GCS_STORAGE_URL_FORMAT = "https://storage.googleapis.com/%s/%s";
 
-/* Simple in-place https->http (removes the 's'). Requires mutable string. */
 static void swap_https_for_http(char *url) {
     if (!url) return;
     if (strncmp(url, "https", 5) == 0) {
@@ -25,11 +24,10 @@ static void swap_https_for_http(char *url) {
     }
 }
 
-/* Per-request context */
 typedef struct gcs_ctx_s {
-    curl_event_res_id        token_id;   /* dependency: Google token resource */
-    char                    *url;        /* owned, mutable for https->http swap */
-    curl_output_interface_t *output;     /* not owned; destroyed via callback */
+    curl_event_res_id        token_id;
+    char                    *url;
+    curl_sink_interface_t *output;
 } gcs_ctx_t;
 
 static void gcs_ctx_destroy(void *userdata) {
@@ -42,9 +40,8 @@ static void gcs_ctx_destroy(void *userdata) {
     aml_free(ctx);
 }
 
-/* Prepare: add Authorization header; possibly swap https->http for metadata */
 static bool gcs_on_prepare(curl_event_request_t *req) {
-    gcs_ctx_t *ctx = (gcs_ctx_t *)req->userdata;
+    gcs_ctx_t *ctx = (gcs_ctx_t *)req->plugin_data;
 
     const gcloud_token_payload_t *tok =
         (const gcloud_token_payload_t *)curl_event_res_peek(req->loop, ctx->token_id);
@@ -53,7 +50,6 @@ static bool gcs_on_prepare(curl_event_request_t *req) {
         return false;
     }
 
-    /* If metadata token, talk to metadata network over http (no TLS) */
     if (tok->metadata_flavor) {
         swap_https_for_http(ctx->url);
     }
@@ -61,20 +57,19 @@ static bool gcs_on_prepare(curl_event_request_t *req) {
 
     char auth_header[1024];
     snprintf(auth_header, sizeof(auth_header), "Bearer %s", tok->access_token);
-    curl_event_loop_update_header(req, "Authorization", auth_header);
+    curl_event_request_set_header(req, "Authorization", auth_header);
 
-    /* GET with optional size/speed limits already set in init */
     return true;
 }
 
 static size_t gcs_on_write(void *data, size_t size, size_t nmemb, curl_event_request_t *req) {
-    gcs_ctx_t *ctx = (gcs_ctx_t *)req->userdata;
-    curl_output_interface_t *output = ctx ? ctx->output : NULL;
+    gcs_ctx_t *ctx = (gcs_ctx_t *)req->plugin_data;
+    curl_sink_interface_t *output = ctx ? ctx->output : NULL;
 
     if (output) {
-        if (!req->output_initialized && output->init) {
+        if (!req->sink_initialized && output->init) {
             output->init(output, curl_event_request_content_length(req));
-            req->output_initialized = true;
+            req->sink_initialized = true;
         }
         if (output->write) {
             return output->write(data, size, nmemb, output);
@@ -86,13 +81,13 @@ static size_t gcs_on_write(void *data, size_t size, size_t nmemb, curl_event_req
 static int gcs_on_complete(CURL *easy_handle, curl_event_request_t *req) {
     (void)easy_handle;
 
-    gcs_ctx_t *ctx = (gcs_ctx_t *)req->userdata;
-    curl_output_interface_t *output = ctx ? ctx->output : NULL;
+    gcs_ctx_t *ctx = (gcs_ctx_t *)req->plugin_data;
+    curl_sink_interface_t *output = ctx ? ctx->output : NULL;
 
     if (output) {
-        if (!req->output_initialized && output->init) {
+        if (!req->sink_initialized && output->init) {
             output->init(output, curl_event_request_content_length(req));
-            req->output_initialized = true;
+            req->sink_initialized = true;
         }
         if (output->complete) {
             output->complete(output, req);
@@ -104,13 +99,13 @@ static int gcs_on_complete(CURL *easy_handle, curl_event_request_t *req) {
 static int gcs_on_failure(CURL *easy_handle, CURLcode result, long http_code, curl_event_request_t *req) {
     (void)easy_handle;
 
-    gcs_ctx_t *ctx = (gcs_ctx_t *)req->userdata;
-    curl_output_interface_t *output = ctx ? ctx->output : NULL;
+    gcs_ctx_t *ctx = (gcs_ctx_t *)req->plugin_data;
+    curl_sink_interface_t *output = ctx ? ctx->output : NULL;
 
     if (output) {
-        if (!req->output_initialized && output->init) {
+        if (!req->sink_initialized && output->init) {
             output->init(output, curl_event_request_content_length(req));
-            req->output_initialized = true;
+            req->sink_initialized = true;
         }
         if (output->failure) {
             output->failure(result, http_code, output, req);
@@ -121,10 +116,9 @@ static int gcs_on_failure(CURL *easy_handle, CURLcode result, long http_code, cu
             req->url ? req->url : "(null)", (int)result, http_code);
 
     if (http_code == 401) {
-        /* Token expired or invalid: let scheduler use default backoff. */
         return -1;
     }
-    return 0; /* non-transient by default */
+    return 0;
 }
 
 bool curl_event_plugin_gcs_download_init(
@@ -132,7 +126,7 @@ bool curl_event_plugin_gcs_download_init(
     const char *bucket,
     const char *object,
     curl_event_res_id  token_id,
-    curl_output_interface_t *output_interface,
+    curl_sink_interface_t *output_interface,
     long max_download_size
 ) {
     if (!loop || !bucket || !object || token_id == 0 || !output_interface) {
@@ -140,43 +134,38 @@ bool curl_event_plugin_gcs_download_init(
         return false;
     }
 
-    /* Build URL and keep a heap copy we can mutate for http swap */
     char url_buf[1024];
     snprintf(url_buf, sizeof(url_buf), GCS_STORAGE_URL_FORMAT, bucket, object);
 
     gcs_ctx_t *ctx = (gcs_ctx_t *)aml_calloc(1, sizeof(*ctx));
-    if (!ctx) {
-        fprintf(stderr, "[gcs_download_init] OOM.\n");
-        return false;
-    }
+    if (!ctx) return false;
+
     ctx->token_id = token_id;
     ctx->url      = aml_strdup(url_buf);
     ctx->output   = output_interface;
 
-    /* Build request */
-    curl_event_request_t req = {0};
-    req.loop              = loop;
-    req.url               = ctx->url;         /* may be swapped to http in on_prepare */
-    req.method            = "GET";
-    req.write_cb          = gcs_on_write;
-    req.on_prepare        = gcs_on_prepare;
-    req.on_complete       = gcs_on_complete;
-    req.on_failure        = gcs_on_failure;
-    req.userdata          = ctx;
-    req.userdata_cleanup  = gcs_ctx_destroy;
+    curl_event_request_t *req = curl_event_request_init(0);
+    curl_event_request_url(req, ctx->url);
+    curl_event_request_method(req, "GET");
 
-    /* Download tuning */
-    req.low_speed_limit   = 1024;   /* 1 KB/s */
-    req.low_speed_time    = 60;     /* 60 seconds */
-    req.max_retries       = 5;
-    req.max_download_size = max_download_size;
+    req->write_cb        = gcs_on_write;
+    req->on_prepare      = gcs_on_prepare;
+    req->on_complete     = gcs_on_complete;
+    req->on_failure      = gcs_on_failure;
 
-    /* Block on token availability */
-    curl_event_request_depend(&req, token_id);
+    curl_event_request_plugin_data(req, ctx, gcs_ctx_destroy);
 
-    if (!curl_event_loop_enqueue(loop, &req, 0)) {
+    req->low_speed_limit   = 1024;   /* 1 KB/s */
+    req->low_speed_time    = 60;     /* 60 seconds */
+    req->max_retries       = 5;
+    req->max_download_size = max_download_size;
+
+    curl_event_request_depend(req, token_id);
+
+    if (!curl_event_request_submit(loop, req, 0)) {
         fprintf(stderr, "[gcs_download_init] Failed to enqueue request.\n");
         gcs_ctx_destroy(ctx);
+        curl_event_request_destroy_unsubmitted(req);
         return false;
     }
 
