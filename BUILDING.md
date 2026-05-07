@@ -1,7 +1,7 @@
 # BUILDING
 
 This project: **a-curl-gcloud-plugin**
-Version: **0.1.1**
+Version: **0.1.2**
 
 ## Local build
 
