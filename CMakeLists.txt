@@ -1,4 +1,5 @@
-# SPDX-FileCopyrightText: 2026 Andy Curtis <contactandyc@gmail.com>
+# SPDX-FileCopyrightText: 2025–2026 Andy Curtis <contactandyc@gmail.com>
+# SPDX-FileCopyrightText: 2025 Knode.ai
 # SPDX-License-Identifier: Apache-2.0
 #
 # Maintainer: Andy Curtis <contactandyc@gmail.com>

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Andy Curtis <contactandyc@gmail.com>
+// SPDX-FileCopyrightText: 2025–2026 Andy Curtis <contactandyc@gmail.com>
 // SPDX-License-Identifier: Apache-2.0
 //
 // Maintainer: Andy Curtis <contactandyc@gmail.com>
@@ -41,6 +41,16 @@ curl_event_request_t *gcloud_v1_gmail_messages_get_init(
     const char *message_id);
 
 void gcloud_v1_gmail_messages_get_set_format(curl_event_request_t *req, const char *format); /* "full", "raw", "minimal", "metadata" */
+
+/* ---------- Attachments.Get (Download File) ---------- */
+/* GET /gmail/v1/users/{userId}/messages/{messageId}/attachments/{id} */
+curl_event_request_t *gcloud_v1_gmail_attachments_get_init(
+    curl_event_loop_t *loop,
+    curl_event_res_id token_id,
+    const char *base_endpoint,
+    const char *user_id,
+    const char *message_id,
+    const char *attachment_id);
 
 /* Submit helper */
 static inline curl_event_request_t *gcloud_v1_gmail_submit(curl_event_loop_t *loop, curl_event_request_t *req, int priority) {

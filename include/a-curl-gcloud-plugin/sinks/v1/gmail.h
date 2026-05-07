@@ -1,5 +1,7 @@
-// SPDX-FileCopyrightText: 2026 Andy Curtis <contactandyc@gmail.com>
+// SPDX-FileCopyrightText: 2025–2026 Andy Curtis <contactandyc@gmail.com>
 // SPDX-License-Identifier: Apache-2.0
+//
+// Maintainer: Andy Curtis <contactandyc@gmail.com>
 
 #ifndef A_CURL_GCLOUD_PLUGIN_SINK_V1_GMAIL_H
 #define A_CURL_GCLOUD_PLUGIN_SINK_V1_GMAIL_H
@@ -18,6 +20,14 @@ typedef struct {
     const char *name;  /* e.g., "Lowe's Home Improvement" (may be NULL) */
     const char *email; /* e.g., "lowes@e.lowes.com" */
 } gcloud_v1_gmail_contact_t;
+
+/* ------- Attachment Reference Struct ------- */
+typedef struct {
+    const char *attachment_id;
+    const char *filename;
+    const char *mime_type;
+    size_t size;
+} gcloud_v1_gmail_attachment_ref_t;
 
 /* ------- Messages.List Sink ------- */
 typedef struct {
@@ -70,6 +80,10 @@ typedef struct {
     const uint8_t *body_data;
     size_t body_len;
 
+    /* Extracted Attachments */
+    gcloud_v1_gmail_attachment_ref_t *attachments;
+    size_t num_attachments;
+
     /* Full Header map (All values are unescaped) */
     const char **header_names;
     const char **header_values;
@@ -87,6 +101,20 @@ curl_sink_interface_t *gcloud_v1_gmail_message_get_sink(
     curl_event_request_t *req,
     bool extract_html_text,
     gcloud_v1_gmail_message_get_cb cb,
+    void *cb_arg);
+
+/* ------- Attachments.Get Sink ------- */
+typedef void (*gcloud_v1_gmail_attachment_get_cb)(
+    void *arg,
+    curl_event_request_t *request,
+    bool success,
+    const uint8_t *file_data,
+    size_t file_len
+);
+
+curl_sink_interface_t *gcloud_v1_gmail_attachment_get_sink(
+    curl_event_request_t *req,
+    gcloud_v1_gmail_attachment_get_cb cb,
     void *cb_arg);
 
 #ifdef __cplusplus

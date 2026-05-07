@@ -1,6 +1,16 @@
 a-curl-gcloud-plugin
-© 2026 Andy Curtis <contactandyc@gmail.com>
+© 2025–2026 Andy Curtis <contactandyc@gmail.com>
+© 2025 Knode.ai — https://www.knodeai.com/
 
 Maintainer: Andy Curtis <contactandyc@gmail.com>
 
 Licensed under Apache-2.0 (see LICENSE)
+
+LEXBOR HTML PARSER:
+This software uses the Lexbor HTML parser (https://github.com/lexbor/lexbor).
+Lexbor is licensed under the Apache License, Version 2.0.
+Copyright (c) Alexander Borisov.
+
+LIBJWT:
+This software uses libjwt (https://github.com/benmcollins/libjwt).
+libjwt is licensed under the Mozilla Public License Version 2.0.
