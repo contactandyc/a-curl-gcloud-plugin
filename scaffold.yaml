@@ -1,5 +1,5 @@
 project_title: a-curl-gcloud-plugin
-version: "0.1.3"
+version: "0.1.4"
 description: "A dynamically scaffolded c/cmake project"
 stack: c/cmake
 date_created: 2025-01-01
