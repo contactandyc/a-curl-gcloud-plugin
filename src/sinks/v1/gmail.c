@@ -377,6 +377,18 @@ static void get_complete(curl_sink_interface_t *iface, curl_event_request_t *req
     const char *date_str = ajsono_scan_str(json, "internalDate", "0");
     msg->internal_date = strtoull(date_str, NULL, 10);
 
+    ajson_t *labels = ajsono_scan(json, "labelIds");
+    if (labels && ajson_is_array(labels)) {
+        msg->num_labels = ajsona_count(labels);
+        if (msg->num_labels > 0) {
+            msg->label_ids = aml_pool_alloc(pool, msg->num_labels * sizeof(char*));
+            size_t idx = 0;
+            for (ajsona_t *l = ajsona_first(labels); l; l = ajsona_next(l)) {
+                msg->label_ids[idx++] = aml_pool_strdup(pool, ajson_to_strd(pool, l->value, ""));
+            }
+        }
+    }
+
     ajson_t *payload = ajsono_scan(json, "payload");
     if (payload) {
         ajson_t *headers = ajsono_scan(payload, "headers");
@@ -535,6 +547,59 @@ curl_sink_interface_t *gcloud_v1_gmail_attachment_get_sink(
     s->b.iface.write   = s_write;
     s->b.iface.failure = att_failure;
     s->b.iface.complete = att_complete;
+    s->b.iface.destroy = s_destroy;
+    curl_event_request_sink(req, (curl_sink_interface_t *)s, NULL);
+    return (curl_sink_interface_t *)s;
+}
+
+/* ---- Message ID Sink (Send, Trash, Delete) ---- */
+typedef struct {
+    base_sink_t b;
+    gcloud_v1_gmail_message_id_cb cb;
+} sink_msg_id_t;
+
+static void msg_id_failure(CURLcode res, long http, curl_sink_interface_t *iface, curl_event_request_t *req) {
+    sink_msg_id_t *s = (void *)iface;
+    if (http == 429 || http == 403) return; // Silent retry
+
+    fprintf(stderr, "[gcloud.gmail.id_sink] HTTP %ld, CURL %d\n", http, res);
+    if (s->cb) s->cb(s->b.cb_arg, req, false, NULL, NULL);
+}
+
+static void msg_id_complete(curl_sink_interface_t *iface, curl_event_request_t *req) {
+    sink_msg_id_t *s = (void *)iface;
+    aml_pool_t *pool = iface->pool;
+
+    // Safely NUL-terminate the response buffer
+    aml_buffer_append(s->b.resp, "", 1);
+
+    ajson_t *json = ajson_parse_string(pool, aml_buffer_data(s->b.resp));
+    if (!json || ajson_is_error(json)) {
+        // Because the event loop ONLY calls complete() on 2xx responses,
+        // an empty or non-JSON body (like from a DELETE/TRASH) is a guaranteed success!
+        if (s->cb) s->cb(s->b.cb_arg, req, true, NULL, NULL);
+        return;
+    }
+
+    const char *id = ajsono_scan_str(json, "id", NULL);
+    const char *thread_id = ajsono_scan_str(json, "threadId", NULL);
+
+    if (s->cb) s->cb(s->b.cb_arg, req, true, id, thread_id);
+}
+
+curl_sink_interface_t *gcloud_v1_gmail_message_id_sink(
+    curl_event_request_t *req,
+    gcloud_v1_gmail_message_id_cb cb, void *cb_arg)
+{
+    if (!req) return NULL;
+    sink_msg_id_t *s = aml_pool_zalloc(req->pool, sizeof *s);
+    s->cb = cb;
+    s->b.cb_arg = cb_arg;
+    s->b.iface.pool    = req->pool;
+    s->b.iface.init    = s_init;
+    s->b.iface.write   = s_write;
+    s->b.iface.failure = msg_id_failure;
+    s->b.iface.complete = msg_id_complete;
     s->b.iface.destroy = s_destroy;
     curl_event_request_sink(req, (curl_sink_interface_t *)s, NULL);
     return (curl_sink_interface_t *)s;

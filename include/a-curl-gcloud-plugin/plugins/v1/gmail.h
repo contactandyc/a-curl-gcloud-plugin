@@ -20,7 +20,6 @@ static inline const char *gcloud_v1_gmail_endpoint(void) {
 }
 
 /* ---------- Messages.List (Delta Sync / Search) ---------- */
-/* GET /gmail/v1/users/{userId}/messages */
 curl_event_request_t *gcloud_v1_gmail_messages_list_init(
     curl_event_loop_t *loop,
     curl_event_res_id token_id,
@@ -32,7 +31,6 @@ void gcloud_v1_gmail_messages_list_set_page_token(curl_event_request_t *req, con
 void gcloud_v1_gmail_messages_list_set_query(curl_event_request_t *req, const char *query);
 
 /* ---------- Messages.Get (Download Body) ---------- */
-/* GET /gmail/v1/users/{userId}/messages/{id} */
 curl_event_request_t *gcloud_v1_gmail_messages_get_init(
     curl_event_loop_t *loop,
     curl_event_res_id token_id,
@@ -40,10 +38,9 @@ curl_event_request_t *gcloud_v1_gmail_messages_get_init(
     const char *user_id,
     const char *message_id);
 
-void gcloud_v1_gmail_messages_get_set_format(curl_event_request_t *req, const char *format); /* "full", "raw", "minimal", "metadata" */
+void gcloud_v1_gmail_messages_get_set_format(curl_event_request_t *req, const char *format);
 
 /* ---------- Attachments.Get (Download File) ---------- */
-/* GET /gmail/v1/users/{userId}/messages/{messageId}/attachments/{id} */
 curl_event_request_t *gcloud_v1_gmail_attachments_get_init(
     curl_event_loop_t *loop,
     curl_event_res_id token_id,
@@ -51,6 +48,31 @@ curl_event_request_t *gcloud_v1_gmail_attachments_get_init(
     const char *user_id,
     const char *message_id,
     const char *attachment_id);
+
+/* ---------- Messages.Send (Send Email) ---------- */
+curl_event_request_t *gcloud_v1_gmail_messages_send_init(
+    curl_event_loop_t *loop,
+    curl_event_res_id token_id,
+    const char *base_endpoint,
+    const char *user_id);
+
+void gcloud_v1_gmail_messages_send_set_raw(curl_event_request_t *req, const char *websafe_base64_mime);
+
+/* ---------- Messages.Trash (Move to Trash) ---------- */
+curl_event_request_t *gcloud_v1_gmail_messages_trash_init(
+    curl_event_loop_t *loop,
+    curl_event_res_id token_id,
+    const char *base_endpoint,
+    const char *user_id,
+    const char *message_id);
+
+/* ---------- Messages.Delete (Permanent Delete) ---------- */
+curl_event_request_t *gcloud_v1_gmail_messages_delete_init(
+    curl_event_loop_t *loop,
+    curl_event_res_id token_id,
+    const char *base_endpoint,
+    const char *user_id,
+    const char *message_id);
 
 /* Submit helper */
 static inline curl_event_request_t *gcloud_v1_gmail_submit(curl_event_loop_t *loop, curl_event_request_t *req, int priority) {

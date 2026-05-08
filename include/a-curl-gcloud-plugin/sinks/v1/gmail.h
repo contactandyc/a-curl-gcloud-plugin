@@ -17,8 +17,8 @@ extern "C" {
 
 /* ------- Contact Parser Struct ------- */
 typedef struct {
-    const char *name;  /* e.g., "Lowe's Home Improvement" (may be NULL) */
-    const char *email; /* e.g., "lowes@e.lowes.com" */
+    const char *name;
+    const char *email;
 } gcloud_v1_gmail_contact_t;
 
 /* ------- Attachment Reference Struct ------- */
@@ -57,15 +57,12 @@ typedef struct {
     const char *snippet;
     uint64_t internal_date;
 
-    /* Structural Routing Data */
     const char *delivered_to;
     const char *list_id;
     bool is_group;
 
-    /* Structured, unescaped header fields */
     const char *subject;
-
-    gcloud_v1_gmail_contact_t *from; /* Usually just 1 */
+    gcloud_v1_gmail_contact_t *from;
 
     gcloud_v1_gmail_contact_t *to;
     size_t num_to;
@@ -76,15 +73,15 @@ typedef struct {
     gcloud_v1_gmail_contact_t *bcc;
     size_t num_bcc;
 
-    /* Decoded payload (From raw or snippet) */
     const uint8_t *body_data;
     size_t body_len;
 
-    /* Extracted Attachments */
+    const char **label_ids;
+    size_t num_labels;
+
     gcloud_v1_gmail_attachment_ref_t *attachments;
     size_t num_attachments;
 
-    /* Full Header map (All values are unescaped) */
     const char **header_names;
     const char **header_values;
     size_t num_headers;
@@ -115,6 +112,20 @@ typedef void (*gcloud_v1_gmail_attachment_get_cb)(
 curl_sink_interface_t *gcloud_v1_gmail_attachment_get_sink(
     curl_event_request_t *req,
     gcloud_v1_gmail_attachment_get_cb cb,
+    void *cb_arg);
+
+/* ------- Message ID Sink (For Send, Trash, Delete) ------- */
+typedef void (*gcloud_v1_gmail_message_id_cb)(
+    void *arg,
+    curl_event_request_t *request,
+    bool success,
+    const char *id,
+    const char *thread_id
+);
+
+curl_sink_interface_t *gcloud_v1_gmail_message_id_sink(
+    curl_event_request_t *req,
+    gcloud_v1_gmail_message_id_cb cb,
     void *cb_arg);
 
 #ifdef __cplusplus
