@@ -8,7 +8,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(a_curl_gcloud_plugin
-  VERSION 0.1.2
+  VERSION 0.1.3
   LANGUAGES C
 )
 
