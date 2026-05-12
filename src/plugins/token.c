@@ -31,6 +31,7 @@ typedef struct curl_event_plugin_gcloud_token_s {
     char *client_id;
     char *client_secret;
     char *refresh_token;
+    char *current_post_body; // <-- FIX: Track dynamic post body for cleanup
     curl_event_res_id token_id;
     bool metadata_flavor;
     int  token_refreshes;
@@ -143,6 +144,12 @@ static size_t token_write_cb(void *contents, size_t size, size_t nmemb, curl_eve
 static bool gcloud_on_prepare(curl_event_request_t *req) {
     curl_event_plugin_gcloud_token_t *gct = (curl_event_plugin_gcloud_token_t *)req->plugin_data;
 
+    // FIX: Clear previous manual allocation
+    if (gct->current_post_body) {
+        aml_free(gct->current_post_body);
+        gct->current_post_body = NULL;
+    }
+
     if (gct->private_key && gct->client_email) {
         char *jwt = generate_jwt(gct);
         if (!jwt) return false;
@@ -150,7 +157,7 @@ static bool gcloud_on_prepare(curl_event_request_t *req) {
         size_t needed = strlen(fmt) + strlen(jwt) + 1;
         char *post = (char *)aml_zalloc(needed);
         sprintf(post, fmt, jwt);
-        aml_free(req->post_data);
+        gct->current_post_body = post; // FIX: Keep track for teardown
         req->post_data = post;
         free(jwt);
     } else if (gct->client_id && gct->client_secret && gct->refresh_token) {
@@ -158,7 +165,7 @@ static bool gcloud_on_prepare(curl_event_request_t *req) {
         size_t needed = strlen(fmt) + strlen(gct->client_id) + strlen(gct->client_secret) + strlen(gct->refresh_token) + 1;
         char *post = (char *)aml_zalloc(needed);
         snprintf(post, needed, fmt, gct->client_id, gct->client_secret, gct->refresh_token);
-        aml_free(req->post_data);
+        gct->current_post_body = post; // FIX: Keep track for teardown
         req->post_data = post;
     }
     return true;
@@ -166,7 +173,7 @@ static bool gcloud_on_prepare(curl_event_request_t *req) {
 
 static int gcloud_on_failure(CURL *easy_handle, CURLcode result, long http_code, curl_event_request_t *req) {
     (void)easy_handle; (void)result; (void)http_code; (void)req;
-    return 2; 
+    return 2;
 }
 
 static int gcloud_on_complete(CURL *easy_handle, curl_event_request_t *req) {
@@ -186,8 +193,8 @@ static int gcloud_on_complete(CURL *easy_handle, curl_event_request_t *req) {
     }
 
     char *access_token = ajson_extract_string(pool, ajsono_scan(json, "access_token"));
-    int   expires_in   = ajsono_scan_int(json, "expires_in", 0);
-    
+    int  expires_in  = ajsono_scan_int(json, "expires_in", 0);
+
     if (!access_token || !expires_in) {
         aml_pool_destroy(pool);
         return 2;
@@ -221,6 +228,7 @@ static void gcloud_token_destroy(void *userdata) {
     if (gct->client_secret) aml_free(gct->client_secret);
     if (gct->refresh_token) aml_free(gct->refresh_token);
     if (gct->response_bh)   aml_buffer_destroy(gct->response_bh);
+    if (gct->current_post_body) aml_free(gct->current_post_body); // FIX: Free manually allocated post body
     aml_free(gct);
 }
 
@@ -234,12 +242,13 @@ curl_event_request_t *curl_event_plugin_gcloud_token_init(curl_event_loop_t *loo
 
     curl_event_plugin_gcloud_token_t *gct = (curl_event_plugin_gcloud_token_t *)aml_zalloc(sizeof(*gct));
     if (!gct) return NULL;
-    
+
     gct->loop            = loop;
     gct->token_id        = token_id;
     gct->token_refreshes = 0;
     gct->response_bh     = aml_buffer_init(1024);
     gct->metadata_flavor = false;
+    gct->current_post_body = NULL;
 
     if (key_file) {
         parse_service_account_key(key_file, gct);
